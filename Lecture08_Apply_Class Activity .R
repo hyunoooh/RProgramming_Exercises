@@ -14,6 +14,9 @@ rm(list=ls())
 
 my.array <- array(rnorm(1000), dim = c(20, 5, 1000)) 
 my.array # a set of arrays with (ncol=5, n=row=20)X10 is created
+dim(my.array)
+
+
 
 # 2) Here is the vector of covariates
 Beta <- matrix(c(1,2,0,4,0), ncol=1)
@@ -23,64 +26,73 @@ Beta
 # The Y-values should be a linear combination of the X's plus some random noise.
 # The output should be a 20 by 1000 array.
 
-##### OH??? 1000 array? [(20X5) X (5X1) + (20X1)]X10 = (20X1)X10
+library(plyr) # use plyr package
+# by using "aaply" function, create Y
+# ?aaply
+# add some randomly distributed random noise
+Y <- aaply(my.array, .margins = 3, .fun = function(x) x%*%Beta+rnorm(20) )
+dim(Y)
 
-# Make an array as a dataframe (list) so that we can use "lapply" function
-my.array.df <- NULL # make an empty list
+Y <- t(Y) # change the dimension to 20 by 1000
+dim(Y)
 
-my.array.df$V1 <- my.array[,,1] # depending on the thrid dimension
-# each array will be put into the list
-my.array.df$V2 <- my.array[,,2]
-my.array.df$V3 <- my.array[,,3]
-my.array.df$V4 <- my.array[,,4]
-my.array.df$V5 <- my.array[,,5]
-my.array.df$V6 <- my.array[,,6]
-my.array.df$V7 <- my.array[,,7]
-my.array.df$V8 <- my.array[,,8]
-my.array.df$V9 <- my.array[,,9]
-my.array.df$V10 <- my.array[,,10]
 
-my.array.df
-class(my.array.df) # it's a list now.
-my.array.df$V1%*%Beta # check if we can apply matrix multiplication to this list.
-# it works!
-# Create a set of randomly distributed random noise
-set.seed(1234567)
-ee <- array(rnorm(100), dim = c(20, 1, 10)) # random noise as a set of arrays
-
-ee.list <- NULL # random noise as a list
-ee.list$V1 <- ee[,,1]
-ee.list$V2 <- ee[,,2]
-ee.list$V3 <- ee[,,3]
-ee.list$V4 <- ee[,,4]
-ee.list$V5 <- ee[,,5]
-ee.list$V6 <- ee[,,6]
-ee.list$V7 <- ee[,,7]
-ee.list$V8 <- ee[,,8]
-ee.list$V9 <- ee[,,9]
-ee.list$V10 <- ee[,,10]
-ee.list
-
-my.array.df$V1%*%Beta+ee.list$V1 # check if this works.
-# it works!
-
-Y.list <- lapply(my.array.df, function(X) X%*%Beta) # create a list Y, by using lapply.
-Y <- mapply("+", Y.list, ee.list) # X%*%Beta + ee
-Y # matrix of (20X1)X10
-class(Y) # class=matrix
 
 
 #3) Run 1,000 regressions across all of this simulated data.  
 #Have as the output a 1000 by 6 matrix of estimated regression coefficients.
 
+# make a function that create beta hat
+get.beta.hat <- function(i, Y, x){
+  coef(lm(Y[,i] ~ my.array[,,i], Y = Y, x = my.array))
+}
+
+# testing the function
+get.beta.hat(1, Y, x)
+coef(lm(Y[,1] ~ my.array[,,1])) #compare to this
+
+# create the output a 1000 by 6 matrix of estimated regression coefficients,
+# by using "laply" function
+# ?laply
+Beta.hat <- laply(.data=1:dim(my.array)[3], .fun = get.beta.hat, Y, my.array, .parallel = FALSE)
+Beta.hat
+str(Beta.hat)
 
 #4) Create a density plot for each of the 6 coefficients (each of
 #which should have been estimated 1,000 times).
+dev.off()
+# combined plots
+par(mfrow=c(2,3)) 
+# apply function to create density plots for columns
+apply(Beta.hat[,1:6], MARGIN = 2, FUN = function(x) plot(density(x), main = paste("Density Plot of Beta-hat")))
+
 
 # What does this represent?
 
+# If we run the regression multiple times, we get normally distributed coefficients, 
+# which would center around the true value.
+
+
 #5) Re-run that code in parallel.  
+# changing the laply( ~ , parallel=TRUE)
+Beta.hat.parallel <- laply(.data=1:dim(my.array)[3], .fun = get.beta.hat, Y, my.array, .parallel = TRUE)
+Beta.hat.parallel
+
 #How does the system time compare for the parallel version?
+
+library('doMC')
+library('foreach')
+
+registerDoMC(cores==4)
+
+system.time(out1 <- laply(.data=1:dim(my.array)[3], .fun = get.beta.hat, Y, my.array, .parallel = FALSE))
+##  user  system elapsed 
+## 2.135   0.032   2.194 
+
+system.time(out2 <- system.time(out <- laply(.data=1:dim(my.array)[3], .fun = get.beta.hat, Y, my.array, .parallel = TRUE)))
+##  user  system elapsed 
+## 3.045   0.048   3.154 
+
 
 ## NOTE: The new "hot" functionality is from Haldey's tidyverse (dplyr) etc.  
 ## See new book "R for Data Science"
